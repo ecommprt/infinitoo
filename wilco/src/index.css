@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-wilco-black text-white font-sans antialiased;
+  }
+  * {
+    @apply border-wilco-gray70;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-wilco-orange hover:bg-wilco-orange-dark text-white font-semibold px-4 py-2 rounded-lg transition-colors;
+  }
+  .btn-ghost {
+    @apply text-wilco-gray20 hover:text-white hover:bg-wilco-gray90 px-4 py-2 rounded-lg transition-colors;
+  }
+  .card {
+    @apply bg-wilco-gray90 border border-wilco-gray70 rounded-xl;
+  }
+  .badge-wilco {
+    @apply bg-wilco-orange text-white text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wide;
+  }
+  .badge-pending {
+    @apply bg-wilco-gray70 text-wilco-gray20 text-xs font-medium px-2 py-0.5 rounded-full;
+  }
+  .badge-progress {
+    @apply bg-yellow-500/20 text-yellow-400 text-xs font-medium px-2 py-0.5 rounded-full;
+  }
+}
