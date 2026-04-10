@@ -2,7 +2,7 @@ import { Outlet, NavLink, useParams } from 'react-router-dom'
 import { LayoutDashboard, Clock, CalendarDays, DollarSign, Radio } from 'lucide-react'
 import clsx from 'clsx'
 
-const EVENT_ID = 'patios-batel-2025' // será dinâmico depois
+const EVENT_ID = 'a1b2c3d4-0000-0000-0000-000000000001'
 
 const navItems = [
   { label: 'Dashboard',   icon: LayoutDashboard, to: '/dashboard' },
