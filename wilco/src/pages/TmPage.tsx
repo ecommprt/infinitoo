@@ -3,44 +3,91 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, Circle, Loader2, Radio } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '@/lib/supabase'
-import type { TmDay, TmTask, TaskStatus } from '@/types/database'
+
+type TaskStatus = 'pending' | 'in_progress' | 'wilco'
+
+interface TmDay {
+  id: string
+  label: string
+  day_of_week: string
+  date: string
+}
+
+interface TmTask {
+  id: string
+  day_id: string
+  time: string | null
+  activity: string
+  assignee: string | null
+  status: TaskStatus
+  obs: string | null
+  completed_at: string | null
+  completed_by: string | null
+}
 
 export default function TmPage() {
   const { eventId, dayId } = useParams<{ eventId: string; dayId?: string }>()
   const qc = useQueryClient()
 
+  // ── Dias ─────────────────────────────────────────────────────
   const { data: days, isLoading: loadingDays } = useQuery({
     queryKey: ['tm_days', eventId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('tm_days').select('*').eq('event_id', eventId!).order('date')
-      if (error) throw error
-      return data as TmDay[]
+    queryFn: async (): Promise<TmDay[]> => {
+      try {
+        const { data, error } = await supabase
+          .from('tm_days')
+          .select('id, label, day_of_week, date')
+          .eq('event_id', eventId!)
+          .order('date')
+
+        if (error) {
+          console.error('[Wilco/TM] Erro ao buscar dias:', error.message, error.details ?? '')
+          return []
+        }
+        return data ?? []
+      } catch (err) {
+        console.error('[Wilco/TM] Falha inesperada em tm_days:', err)
+        return []
+      }
     },
     enabled: !!eventId
   })
 
-  // Se não tem dayId na URL, redireciona para o primeiro dia
+  // Redireciona para o primeiro dia se não há dayId na URL
   if (!loadingDays && days && days.length > 0 && !dayId) {
     return <Navigate to={`/tm/${eventId}/${days[0].id}`} replace />
   }
 
   const selectedDay = days?.find(d => d.id === dayId)
 
+  // ── Tarefas do dia ────────────────────────────────────────────
   const { data: tasks, isLoading: loadingTasks } = useQuery({
     queryKey: ['tm_tasks', dayId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('tm_tasks').select('*').eq('day_id', dayId!).order('created_at')
-      if (error) throw error
-      return data as TmTask[]
+    queryFn: async (): Promise<TmTask[]> => {
+      try {
+        const { data, error } = await supabase
+          .from('tm_tasks')
+          .select('id, day_id, time, activity, assignee, status, obs, completed_at, completed_by')
+          .eq('day_id', dayId!)
+          .order('created_at')
+
+        if (error) {
+          console.error('[Wilco/TM] Erro ao buscar tarefas:', error.message, error.details ?? '')
+          return []
+        }
+        return data ?? []
+      } catch (err) {
+        console.error('[Wilco/TM] Falha inesperada em tm_tasks:', err)
+        return []
+      }
     },
     enabled: !!dayId
   })
 
+  // ── Atualizar status ──────────────────────────────────────────
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: TaskStatus }) => {
-      const patch: any = { status }
+      const patch: Record<string, unknown> = { status }
       if (status === 'wilco') {
         patch.completed_at = new Date().toISOString()
         patch.completed_by = 'Usuário'
@@ -48,8 +95,16 @@ export default function TmPage() {
         patch.completed_at = null
         patch.completed_by = null
       }
-      const { error } = await supabase.from('tm_tasks').update(patch).eq('id', id)
-      if (error) throw error
+
+      const { error } = await supabase
+        .from('tm_tasks')
+        .update(patch)
+        .eq('id', id)
+
+      if (error) {
+        console.error('[Wilco/TM] Erro ao atualizar tarefa:', error.message, error.details ?? '')
+        throw error
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tm_tasks', dayId] })
@@ -73,9 +128,16 @@ export default function TmPage() {
     <div className="flex h-full">
       {/* Sidebar de dias */}
       <div className="w-44 flex-shrink-0 bg-wilco-gray90 border-r border-wilco-gray70 py-4">
-        <p className="text-wilco-gray50 text-xs font-semibold tracking-widest uppercase px-4 mb-3">Dias</p>
+        <p className="text-wilco-gray50 text-xs font-semibold tracking-widest uppercase px-4 mb-3">
+          Dias
+        </p>
+
         {loadingDays ? (
-          <div className="px-4 text-wilco-gray50 text-sm">Carregando...</div>
+          <div className="flex justify-center pt-6">
+            <Loader2 size={20} className="animate-spin text-wilco-orange" />
+          </div>
+        ) : days?.length === 0 ? (
+          <p className="px-4 text-wilco-gray50 text-xs">Nenhum dia cadastrado.</p>
         ) : (
           days?.map(day => (
             <Link key={day.id} to={`/tm/${eventId}/${day.id}`}
@@ -94,39 +156,47 @@ export default function TmPage() {
 
       {/* Conteúdo principal */}
       <div className="flex-1 overflow-y-auto">
-        {/* Header fixo */}
+        {/* Header sticky */}
         <div className="sticky top-0 z-10 bg-wilco-black/95 backdrop-blur border-b border-wilco-gray70 px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold text-white">{selectedDay?.label ?? '—'}</h1>
+              <h1 className="text-xl font-bold text-white">
+                {selectedDay?.label ?? '—'}
+              </h1>
               <p className="text-wilco-gray50 text-sm">{selectedDay?.day_of_week}</p>
             </div>
-            <div className="flex items-center gap-6">
-              <div className="text-right">
-                <div className="text-2xl font-bold text-white">{pct}%</div>
-                <div className="text-wilco-gray50 text-xs">Wilco</div>
-              </div>
-              <div className="text-xs text-wilco-gray50 space-y-0.5">
-                <div>{wilcoCount} confirmados</div>
-                <div>{inProgressCount} em andamento</div>
-                <div>{total - wilcoCount - inProgressCount} pendentes</div>
-              </div>
-              <div className="w-28">
-                <div className="bg-wilco-gray70 rounded-full h-2">
-                  <div className="bg-wilco-orange h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${pct}%` }} />
+
+            {total > 0 && (
+              <div className="flex items-center gap-6">
+                <div className="text-right">
+                  <div className="text-2xl font-bold text-white">{pct}%</div>
+                  <div className="text-wilco-gray50 text-xs">Wilco</div>
                 </div>
-                <p className="text-wilco-gray50 text-xs mt-1 text-right">{wilcoCount}/{total}</p>
+                <div className="text-xs text-wilco-gray50 space-y-0.5">
+                  <div>{wilcoCount} confirmados</div>
+                  <div>{inProgressCount} em andamento</div>
+                  <div>{total - wilcoCount - inProgressCount} pendentes</div>
+                </div>
+                <div className="w-28">
+                  <div className="bg-wilco-gray70 rounded-full h-2">
+                    <div className="bg-wilco-orange h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${pct}%` }} />
+                  </div>
+                  <p className="text-wilco-gray50 text-xs mt-1 text-right">
+                    {wilcoCount}/{total}
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
-        {/* Lista de tarefas */}
+        {/* Tarefas */}
         <div className="p-6">
           {loadingTasks ? (
-            <div className="flex items-center justify-center py-20">
+            <div className="flex flex-col items-center justify-center py-20 gap-3">
               <Loader2 className="animate-spin text-wilco-orange" size={32} />
+              <p className="text-wilco-gray50 text-sm">Carregando tarefas...</p>
             </div>
           ) : grouped.length === 0 ? (
             <div className="text-center py-20 text-wilco-gray50">
@@ -137,14 +207,19 @@ export default function TmPage() {
               {grouped.map(({ time, tasks: timeTasks }) => (
                 <div key={time}>
                   <div className="flex items-center gap-3 mb-3">
-                    <span className="text-wilco-orange font-bold text-sm w-14 flex-shrink-0">{time}</span>
+                    <span className="text-wilco-orange font-bold text-sm w-14 flex-shrink-0">
+                      {time}
+                    </span>
                     <div className="flex-1 h-px bg-wilco-gray70" />
                   </div>
                   <div className="space-y-2 ml-4">
                     {timeTasks.map(task => (
                       <TaskRow key={task.id} task={task}
-                        onToggle={() => updateStatus.mutate({ id: task.id, status: nextStatus(task.status) })}
-                        isLoading={updateStatus.isPending} />
+                        onToggle={() =>
+                          updateStatus.mutate({ id: task.id, status: nextStatus(task.status) })
+                        }
+                        isLoading={updateStatus.isPending}
+                      />
                     ))}
                   </div>
                 </div>
@@ -158,14 +233,18 @@ export default function TmPage() {
 }
 
 function TaskRow({ task, onToggle, isLoading }: {
-  task: TmTask; onToggle: () => void; isLoading: boolean
+  task: TmTask
+  onToggle: () => void
+  isLoading: boolean
 }) {
   return (
     <div className={clsx(
       'flex items-start gap-3 p-3 rounded-lg border transition-all',
-      task.status === 'wilco'      ? 'border-wilco-orange/30 bg-wilco-orange/5'
-      : task.status === 'in_progress' ? 'border-yellow-500/30 bg-yellow-500/5'
-      : 'border-wilco-gray70 bg-wilco-gray90'
+      task.status === 'wilco'
+        ? 'border-wilco-orange/30 bg-wilco-orange/5'
+        : task.status === 'in_progress'
+        ? 'border-yellow-500/30 bg-yellow-500/5'
+        : 'border-wilco-gray70 bg-wilco-gray90'
     )}>
       <button onClick={onToggle} disabled={isLoading}
         className="mt-0.5 flex-shrink-0 transition-transform hover:scale-110 active:scale-95">
@@ -178,10 +257,15 @@ function TaskRow({ task, onToggle, isLoading }: {
       </button>
 
       <div className="flex-1 min-w-0">
-        <p className={clsx('text-sm', task.status === 'wilco' ? 'text-wilco-gray50 line-through' : 'text-white')}>
+        <p className={clsx(
+          'text-sm leading-snug',
+          task.status === 'wilco' ? 'text-wilco-gray50 line-through' : 'text-white'
+        )}>
           {task.activity}
         </p>
-        {task.obs && <p className="text-wilco-gray50 text-xs mt-1">{task.obs}</p>}
+        {task.obs && (
+          <p className="text-wilco-gray50 text-xs mt-1">{task.obs}</p>
+        )}
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
